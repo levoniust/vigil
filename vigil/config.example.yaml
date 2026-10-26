@@ -1,0 +1,47 @@
+# Vigil settings. Saved changes are picked up within a minute (no restart). A broken file keeps the last good settings.
+title: Vigil
+interval_seconds: 60      # how often every check runs
+timeout_seconds: 6
+fail_after: 2             # failed checks in a row before something counts as down (and alerts)
+keep_days: 30             # history kept
+
+# Order of the groups on the page (others follow alphabetically)
+groups: [Core, Apps, Devices]
+
+# type http: up if it answers with a status below 500 (or one of `expect: [200]`). type tcp: up if the port accepts a connection.
+# optional: true = shown grey instead of red when off (e.g. a PC that is not always on). link: what the card opens.
+checks:
+  - {id: router, name: Router, group: Core, type: tcp, host: 192.168.1.1, port: 443, icon: router}
+  - {id: example, name: Example app, group: Apps, type: http, url: "http://192.168.1.10:8080/", icon: apps}
+
+# NUT servers (Network UPS Tools). Every UPS/PDU on them is shown. watts = UPS rating for UPSes that report load only in %.
+nut: []
+#  - {name: NAS, host: 192.168.1.10, port: 3493, watts: {ups: 1500}}
+
+scrutiny_url: ""          # e.g. http://192.168.1.10:31054  (drive health)
+
+games: []
+#  - {name: Valheim, type: valheim, host: 192.168.1.20, port: 2456, address: valheim.example.com}
+#  - {name: Minecraft, type: minecraft, host: 192.168.1.20, port: 25565, address: mc.example.com}
+
+exposure:
+  enabled: true
+  expected_ports: [443]   # public ports you opened on purpose; anything else Shodan sees is flagged
+  domain: ""              # watch certificate transparency for *.domain (new certificates alert)
+  public_hosts: []        # HTTPS sites to watch from the internet side; planned: true = not live yet
+  #  - {name: Photos, url: "https://photos.example.com/"}
+  cert_warn_days: 14
+
+briefing:                 # daily summary written by an LLM (any OpenAI-compatible chat API)
+  enabled: false
+  url: ""                 # e.g. http://192.168.1.10:8080/v1/chat/completions
+  model: ""
+  api_key: ""
+  headers: {}
+  extra_body: {}
+  time: "07:00"
+
+notify:                   # where alerts go (all optional)
+  discord_webhook: ""
+  ntfy_url: ""
+  ha_webhook: ""

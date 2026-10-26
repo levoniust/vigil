@@ -1,0 +1,10 @@
+services:
+  vigil:
+    image: ghcr.io/levoniust/vigil:latest
+    container_name: vigil
+    ports: ["8080:8080"]
+    volumes:
+      - ./data:/data                                 # config.yaml + vigil.db live here
+      - /etc/localtime:/etc/localtime:ro             # so the daily briefing runs at your local time
+    # environment: [VIGIL_DEMO=1]                    # try it with a made-up lab first
+    restart: unless-stopped

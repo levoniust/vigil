@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vigil</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #070b14; --bg2: #0b1222; --panel: rgba(17, 27, 48, .72); --panel-solid: #111b30; --line: rgba(120, 160, 255, .14);
+  --line2: rgba(120, 160, 255, .26); --text: #dce6ff; --muted: #7d8bb0; --dim: #4a5677;
+  --cyan: #22d3ee; --blue: #60a5fa; --violet: #a78bfa; --green: #34d399; --amber: #fbbf24; --red: #f87171; --grey: #64748b;
+  --glow: 0 0 0 1px var(--line), 0 10px 40px -12px rgba(0, 0, 0, .7);
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+:root[data-theme="light"] {
+  --bg: #eef2fb; --bg2: #e3e9f7; --panel: rgba(255, 255, 255, .82); --panel-solid: #fff; --line: rgba(40, 70, 140, .13);
+  --line2: rgba(40, 70, 140, .25); --text: #101a33; --muted: #55638a; --dim: #9aa6c4;
+  --cyan: #0891b2; --blue: #2563eb; --violet: #7c3aed; --green: #059669; --amber: #d97706; --red: #dc2626; --grey: #94a3b8;
+  --glow: 0 0 0 1px var(--line), 0 10px 30px -14px rgba(30, 50, 100, .25);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: radial-gradient(1200px 600px at 10% -10%, rgba(34, 211, 238, .10), transparent 60%),
+              radial-gradient(900px 500px at 100% 0%, rgba(167, 139, 250, .10), transparent 60%), var(--bg);
+  background-attachment: fixed; color: var(--text); font: 14px/1.45 var(--sans); min-height: 100vh;
+}
+body::before { /* faint grid */
+  content: ""; position: fixed; inset: 0; pointer-events: none; opacity: .5;
+  background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 44px 44px; mask-image: linear-gradient(to bottom, rgba(0,0,0,.6), transparent 70%);
+}
+a { color: inherit; text-decoration: none; }
+.wrap { max-width: 1480px; margin: 0 auto; padding: 18px 20px 40px; position: relative; }
+.mono { font-family: var(--mono); }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+
+/* ---------- top bar ---------- */
+header { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+.brand { display: flex; align-items: center; gap: 12px; }
+.radar { width: 44px; height: 44px; }
+.radar .sweep { transform-origin: 22px 22px; animation: spin 4s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.brand h1 { margin: 0; font: 700 22px/1 var(--mono); letter-spacing: .32em; }
+.brand .sub { font: 500 11px/1.2 var(--mono); color: var(--muted); letter-spacing: .18em; text-transform: uppercase; margin-top: 4px; }
+.spacer { flex: 1; }
+.pill { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; font: 600 12px var(--mono);
+  letter-spacing: .08em; text-transform: uppercase; background: var(--panel); box-shadow: var(--glow); backdrop-filter: blur(10px); }
+.pill .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--green); box-shadow: 0 0 12px var(--green); }
+.pill.bad .dot { background: var(--red); box-shadow: 0 0 12px var(--red); animation: pulse 1.4s infinite; }
+.pill.warn .dot { background: var(--amber); box-shadow: 0 0 12px var(--amber); }
+@keyframes pulse { 50% { opacity: .35; } }
+.clock { font: 600 13px var(--mono); color: var(--muted); }
+.iconbtn { border: 0; background: var(--panel); color: var(--text); box-shadow: var(--glow); width: 38px; height: 38px; border-radius: 12px;
+  cursor: pointer; display: grid; place-items: center; }
+.iconbtn:hover { box-shadow: 0 0 0 1px var(--line2), 0 0 18px -4px var(--cyan); }
+.iconbtn svg { width: 18px; height: 18px; }
+
+/* ---------- panels ---------- */
+.panel { background: var(--panel); border-radius: 18px; box-shadow: var(--glow); backdrop-filter: blur(14px); padding: 16px 18px; position: relative; min-width: 0; }
+.panel h2 { margin: 0 0 12px; font: 600 12px var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--muted);
+  display: flex; align-items: center; gap: 8px; }
+.panel h2 svg { width: 16px; height: 16px; color: var(--cyan); }
+.panel h2 .right { margin-left: auto; letter-spacing: 0; text-transform: none; font-weight: 400; }
+.grid { display: grid; gap: 16px; }
+.hero { grid-template-columns: 300px 1fr; }
+.two { grid-template-columns: 1.2fr 1fr; }
+.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1100px) { .hero, .two, .three { grid-template-columns: 1fr; } }
+section { margin-top: 16px; }
+
+/* ring */
+.ringbox { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+.ring { width: 190px; height: 190px; }
+.ring .track { stroke: var(--line); }
+.ring .val { transition: stroke-dashoffset .8s ease; filter: drop-shadow(0 0 6px currentColor); }
+.ring text { font-family: var(--mono); fill: var(--text); }
+.kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.kpi { background: linear-gradient(160deg, rgba(96,165,250,.08), transparent 60%), var(--bg2); border-radius: 14px; padding: 12px 14px;
+  box-shadow: inset 0 0 0 1px var(--line); position: relative; overflow: hidden; }
+.kpi .lbl { font: 600 10.5px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.kpi .num { font: 700 26px/1.2 var(--mono); margin-top: 6px; }
+.kpi .num small { font-size: 13px; color: var(--muted); font-weight: 600; margin-left: 3px; }
+.kpi .hint { font-size: 11.5px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi::after { content: ""; position: absolute; right: -20px; top: -20px; width: 70px; height: 70px; border-radius: 50%;
+  background: radial-gradient(var(--kc, var(--cyan)), transparent 70%); opacity: .18; }
+
+/* issues + briefing */
+.issue { display: flex; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--bg2); margin-bottom: 8px; box-shadow: inset 3px 0 0 var(--c, var(--amber)); }
+.issue .t { font-weight: 600; }
+.issue .d { color: var(--muted); font-size: 12.5px; word-break: break-word; }
+.issue svg { width: 18px; height: 18px; color: var(--c); flex: none; margin-top: 2px; }
+.allgood { display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 12px; background: var(--bg2); color: var(--green); font-weight: 600; }
+.allgood svg { width: 26px; height: 26px; }
+.brief { white-space: pre-wrap; font-size: 13.5px; line-height: 1.6; background: var(--bg2); border-radius: 12px; padding: 12px 14px; min-height: 80px; }
+.btn { border: 0; cursor: pointer; font: 600 12px var(--mono); letter-spacing: .06em; color: var(--bg); background: linear-gradient(90deg, var(--cyan), var(--blue));
+  padding: 8px 14px; border-radius: 10px; }
+.btn.ghost { background: var(--bg2); color: var(--text); box-shadow: inset 0 0 0 1px var(--line2); }
+.btn:disabled { opacity: .5; cursor: wait; }
+
+/* services */
+.group { margin-bottom: 18px; }
+.group h3 { margin: 0 0 10px; font: 600 11.5px var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--dim); display: flex; gap: 10px; align-items: center; }
+.group h3::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.card { background: var(--bg2); border-radius: 14px; padding: 11px 12px 10px; box-shadow: inset 0 0 0 1px var(--line); transition: transform .15s, box-shadow .15s; display: block; }
+.card:hover { transform: translateY(-2px); box-shadow: inset 0 0 0 1px var(--line2), 0 8px 24px -10px var(--sc, var(--cyan)); }
+.card .top { display: flex; align-items: center; gap: 10px; }
+.card .ic { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: rgba(96,165,250,.1); color: var(--sc); flex: none; }
+.card .ic svg { width: 17px; height: 17px; }
+.card .nm { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card .tg { font: 11px var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card .st { margin-left: auto; text-align: right; flex: none; }
+.sdot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; background: var(--sc); box-shadow: 0 0 10px var(--sc); }
+.card .ms { font: 600 11.5px var(--mono); color: var(--muted); }
+.bars { display: flex; gap: 2px; height: 18px; align-items: flex-end; margin-top: 9px; }
+.bars i { flex: 1; border-radius: 2px; background: var(--green); opacity: .85; min-height: 4px; }
+.bars i.n { background: var(--line); opacity: 1; }
+.bars i.p { background: var(--amber); } .bars i.d { background: var(--red); }
+.card .ft { display: flex; justify-content: space-between; font: 10.5px var(--mono); color: var(--dim); margin-top: 5px; }
+
+/* tables / chips */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font: 600 10.5px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); }
+td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+tr:last-child td { border-bottom: 0; }
+.chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 999px; font: 600 11.5px var(--mono); background: var(--bg2); box-shadow: inset 0 0 0 1px var(--line2); margin: 2px 4px 2px 0; }
+.chip.ok { color: var(--green); } .chip.warn { color: var(--amber); } .chip.bad { color: var(--red); } .chip.off { color: var(--grey); } .chip.info { color: var(--blue); }
+.meter { height: 7px; border-radius: 99px; background: var(--line); overflow: hidden; }
+.meter > i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--cyan), var(--blue)); }
+.ups { background: var(--bg2); border-radius: 14px; padding: 12px; box-shadow: inset 0 0 0 1px var(--line); margin-bottom: 10px; }
+.ups .row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.ups .big { font: 700 22px var(--mono); }
+.ups .kv { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 10px; font-size: 12px; }
+.ups .kv b { display: block; font: 600 14px var(--mono); }
+.pdus { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.game { display: flex; align-items: center; gap: 12px; background: var(--bg2); border-radius: 14px; padding: 12px; box-shadow: inset 0 0 0 1px var(--line); margin-bottom: 10px; }
+.game .ic { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: rgba(167,139,250,.12); color: var(--violet); }
+.game .ic svg { width: 22px; height: 22px; }
+.game .players { margin-left: auto; text-align: right; font: 700 20px var(--mono); }
+.timeline { max-height: 340px; overflow: auto; }
+.ev { display: flex; gap: 10px; padding: 7px 0; border-bottom: 1px dashed var(--line); font-size: 13px; }
+.ev .when { font: 11px var(--mono); color: var(--muted); width: 92px; flex: none; padding-top: 2px; }
+.ev .b { color: var(--muted); font-size: 12px; }
+footer { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; color: var(--dim); font: 11.5px var(--mono); }
+.empty { color: var(--muted); font-size: 13px; padding: 8px 0; }
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--panel-solid); box-shadow: var(--glow);
+  padding: 10px 16px; border-radius: 12px; transition: transform .25s, opacity .25s; font-size: 13px; z-index: 9; opacity: 0; pointer-events: none; }
+.toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+@media (max-width: 600px) { .wrap { padding: 14px 16px 30px; } .brand h1 { font-size: 18px; } .pdus { grid-template-columns: 1fr; } .ring { width: 160px; height: 160px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <svg class="radar" viewBox="0 0 44 44" aria-hidden="true">
+        <defs><linearGradient id="sw" x1="0" x2="1"><stop offset="0" stop-color="#22d3ee" stop-opacity="0"/><stop offset="1" stop-color="#22d3ee" stop-opacity=".7"/></linearGradient></defs>
+        <circle cx="22" cy="22" r="20" fill="none" stroke="#22d3ee" stroke-opacity=".35"/>
+        <circle cx="22" cy="22" r="13" fill="none" stroke="#22d3ee" stroke-opacity=".25"/>
+        <circle cx="22" cy="22" r="6" fill="none" stroke="#22d3ee" stroke-opacity=".2"/>
+        <path class="sweep" d="M22 22 L22 2 A20 20 0 0 1 41 16 Z" fill="url(#sw)"/>
+        <circle cx="30" cy="12" r="1.8" fill="#34d399"><animate attributeName="opacity" values="1;.2;1" dur="2s" repeatCount="indefinite"/></circle>
+        <circle cx="22" cy="22" r="2" fill="#22d3ee"/>
+      </svg>
+      <div><h1 id="title">VIGIL</h1><div class="sub">homelab watch</div></div>
+    </div>
+    <div class="spacer"></div>
+    <span class="pill" id="pill"><span class="dot"></span><span id="pilltext">connecting…</span></span>
+    <span class="clock" id="clock"></span>
+    <button class="iconbtn" id="themebtn" title="Light / dark"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.39 5.39 0 0 1-4.4 2.26 5.4 5.4 0 0 1-3.14-9.8c-.44-.06-.9-.1-1.36-.1z"/></svg></button>
+  </header>
+
+  <div class="grid hero">
+    <div class="panel ringbox">
+      <svg class="ring" viewBox="0 0 200 200">
+        <circle class="track" cx="100" cy="100" r="84" fill="none" stroke-width="12"/>
+        <circle id="ringval" class="val" cx="100" cy="100" r="84" fill="none" stroke-width="12" stroke-linecap="round"
+                stroke="currentColor" style="color: var(--green)" transform="rotate(-90 100 100)" stroke-dasharray="527.8" stroke-dashoffset="527.8"/>
+        <text x="100" y="98" text-anchor="middle" font-size="40" font-weight="700" id="ringnum">–</text>
+        <text x="100" y="124" text-anchor="middle" font-size="11.5" fill="currentColor" style="fill: var(--muted); letter-spacing: .16em">SERVICES UP</text>
+      </svg>
+      <div class="small muted mono" id="ringsub"></div>
+    </div>
+    <div class="panel">
+      <h2><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h2v8H3zm4-5h2v13H7zm4-5h2v18h-2zm4 8h2v10h-2zm4-3h2v13h-2z"/></svg>At a glance<span class="right small mono" id="updated"></span></h2>
+      <div class="kpis" id="kpis"></div>
+    </div>
+  </div>
+
+  <section class="grid two">
+    <div class="panel">
+      <h2><svg viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>Needs attention<span class="right small" id="issuecount"></span></h2>
+      <div id="issues"></div>
+    </div>
+    <div class="panel">
+      <h2><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5a2 2 0 0 0-2 2v14l4-4h12a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm-3 9H8v-2h8v2zm0-3H8V7h8v2z"/></svg>Briefing<span class="right small mono" id="briefwhen"></span></h2>
+      <div class="brief" id="brief"></div>
+      <div style="margin-top:10px; display:flex; gap:8px; align-items:center"><button class="btn" id="briefbtn">Brief me now</button><span class="small muted" id="briefnote"></span></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2><svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 4h7v7H4zm9 0h7v7h-7zM4 13h7v7H4zm9 0h7v7h-7z"/></svg>Services<span class="right small mono">48 bars = last 24 h · click a card to open it</span></h2>
+    <div id="groups"></div>
+  </section>
+
+  <section class="grid three">
+    <div class="panel">
+      <h2><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm6.93 6h-2.95a15.65 15.65 0 0 0-1.38-3.56A8.03 8.03 0 0 1 18.93 8zM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96zM4.26 14C4.1 13.36 4 12.69 4 12s.1-1.36.26-2h3.38a16.5 16.5 0 0 0 0 4H4.26zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56A7.99 7.99 0 0 1 5.08 16zm2.95-8H5.08a7.99 7.99 0 0 1 4.33-3.56A15.65 15.65 0 0 0 8.03 8zM12 19.96c-.83-1.2-1.48-2.53-1.91-3.96h3.82c-.43 1.43-1.08 2.76-1.91 3.96zM14.34 14H9.66a14.7 14.7 0 0 1 0-4h4.68a14.7 14.7 0 0 1 0 4zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95a8.03 8.03 0 0 1-4.33 3.56zM16.36 14a16.5 16.5 0 0 0 0-4h3.38c.16.64.26 1.31.26 2s-.1 1.36-.26 2h-3.38z"/></svg>Internet exposure<span class="right small mono" id="exwhen"></span></h2>
+      <div id="exposure"></div>
+    </div>
+    <div class="panel">
+      <h2><svg viewBox="0 0 24 24" fill="currentColor"><path d="M11 21h-1l1-7H7.5c-.88 0-.33-.75-.31-.78C8.48 10.94 10.42 7.54 13.01 3h1l-1 7h3.51c.4 0 .62.19.4.66C12.97 17.55 11 21 11 21z"/></svg>Power<span class="right small mono" id="powertotal"></span></h2>
+      <div id="power"></div>
+    </div>
+    <div class="panel">
+      <h2><svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 6H3a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h18a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1zM10 13H8v2H6v-2H4v-2h2V9h2v2h2v2zm4.5 2a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm4-3a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>Game servers</h2>
+      <div id="games"></div>
+      <h2 style="margin-top:16px"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 2h12a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm6 4a6 6 0 1 0 0 12 6 6 0 0 0 0-12zm0 4a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"/></svg>Drives<span class="right small mono" id="diskwhen"></span></h2>
+      <div id="disks"></div>
+    </div>
+  </section>
+
+  <section class="grid two">
+    <div class="panel">
+      <h2><svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 3a9 9 0 0 0-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.95 8.95 0 0 0 13 21a9 9 0 0 0 0-18zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg>Timeline</h2>
+      <div class="timeline" id="events"></div>
+    </div>
+    <div class="panel">
+      <h2><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1 3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>Certificates issued for your domain<span class="right small mono" id="ctdomain"></span></h2>
+      <div class="timeline" id="ct"></div>
+    </div>
+  </section>
+
+  <footer>
+    <span id="ver">Vigil</span>·<span id="uptime"></span>·
+    <button class="btn ghost" data-refresh="checks">Re-check now</button>
+    <button class="btn ghost" data-refresh="exposure">Re-scan exposure</button>
+    <button class="btn ghost" data-refresh="ct">Refresh cert log</button>
+    <button class="btn ghost" id="testalert">Send test alert</button>
+    <span id="notifyinfo"></span>
+  </footer>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const ICONS = {
+  dns: "M20 13H4a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1zM7 19a2 2 0 1 1 0-4 2 2 0 0 1 0 4zM20 3H4a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1zM7 9a2 2 0 1 1 0-4 2 2 0 0 1 0 4z",
+  router: "M20.2 5.9l.8-.8A10.96 10.96 0 0 0 16 2.5c-1.84 0-3.6.46-5.1 1.3l.8.8A9.9 9.9 0 0 1 16 3.5c1.6 0 3.16.43 4.2 1.4zM19.4 6.7A8.2 8.2 0 0 0 16 5.5c-1.2 0-2.4.3-3.4 1l.8.8a6.2 6.2 0 0 1 5.3 0zM19 13h-2V9h-2v4H5a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4a2 2 0 0 0-2-2zM8 18H6v-2h2v2zm3.5 0h-2v-2h2v2zm3.5 0h-2v-2h2v2z",
+  shield: "M12 1 3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z",
+  swap: "M6.99 11 3 15l3.99 4v-3H14v-2H6.99v-3zM21 9l-3.99-4v3H10v2h7.01v3L21 9z",
+  home: "M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z",
+  chat: "M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z",
+  brain: "M13 3a6.97 6.97 0 0 0-5.65 2.88A5 5 0 0 0 4 15.9V18a3 3 0 0 0 3 3h1v-4h2v4h2v-6h2v6h1a3 3 0 0 0 3-3v-1.34A7 7 0 0 0 13 3z",
+  image: "M21 19V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z",
+  monitor: "M21 2H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7v2H8v2h8v-2h-2v-2h7a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zm0 14H3V4h18v12z",
+  search: "M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z",
+  play: "M8 5v14l11-7z",
+  photo: "M12 12m-3.2 0a3.2 3.2 0 1 0 6.4 0 3.2 3.2 0 1 0-6.4 0M9 2 7.17 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-3.17L15 2H9zm3 15a5 5 0 1 1 0-10 5 5 0 0 1 0 10z",
+  movie: "M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V4h-4z",
+  tv: "M21 3H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5v2h8v-2h5a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 14H3V5h18v12z",
+  music: "M12 3v10.55A4 4 0 1 0 14 17V7h4V3h-6z",
+  download: "M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z",
+  bolt: "M11 21h-1l1-7H7.5c-.88 0-.33-.75-.31-.78C8.48 10.94 10.42 7.54 13.01 3h1l-1 7h3.51c.4 0 .62.19.4.66C12.97 17.55 11 21 11 21z",
+  disk: "M6 2h12a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm6 4a6 6 0 1 0 0 12 6 6 0 0 0 0-12zm0 4a2 2 0 1 1 0 4 2 2 0 0 1 0-4z",
+  remote: "M20 18a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z",
+  game: "M21 6H3a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h18a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1zM10 13H8v2H6v-2H4v-2h2V9h2v2h2v2zm4.5 2a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm4-3a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z",
+  robot: "M20 9V7a2 2 0 0 0-2-2h-3a3 3 0 1 0-6 0H6a2 2 0 0 0-2 2v2a3 3 0 0 0 0 6v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4a3 3 0 0 0 0-6zM7.5 11.5a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0zM16 17H8v-2h8v2zm-1-4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z",
+  pc: "M20 18a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z",
+  apps: "M4 8h4V4H4v4zm6 12h4v-4h-4v4zm-6 0h4v-4H4v4zm0-6h4v-4H4v4zm6 0h4v-4h-4v4zm6-10v4h4V4h-4zm-6 4h4V4h-4v4zm6 6h4v-4h-4v4zm0 6h4v-4h-4v4z",
+  warn: "M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z",
+  bad: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z",
+  info: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z",
+  ok: "M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm-2 15-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z",
+};
+const svg = (name, extra = "") => `<svg viewBox="0 0 24 24" fill="currentColor" ${extra}><path d="${ICONS[name] || ICONS.apps}"/></svg>`;
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const $ = id => document.getElementById(id);
+const LEVEL = { bad: "var(--red)", warn: "var(--amber)", info: "var(--blue)", ok: "var(--green)" };
+const STATUS = { up: "var(--green)", down: "var(--red)", pending: "var(--amber)", unknown: "var(--grey)" };
+
+function ago(ts, now) {
+  if (!ts) return "never";
+  const s = Math.max(0, (now || Date.now() / 1000) - ts);
+  if (s < 60) return `${Math.round(s)}s ago`;
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  if (s < 172800) return `${(s / 3600).toFixed(1)} h ago`;
+  return `${(s / 86400).toFixed(1)} days ago`;
+}
+const when = ts => new Date(ts * 1000).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" });
+const num = (v, d = 0) => v == null ? "–" : Number(v).toFixed(d);
+
+function render(s) {
+  document.title = `${s.summary.down ? "⚠ " : ""}${s.title}`;
+  $("title").textContent = s.title.toUpperCase();
+  const bad = s.issues.filter(i => i.level === "bad").length, warn = s.issues.filter(i => i.level === "warn").length;
+  $("pill").className = "pill " + (bad ? "bad" : warn ? "warn" : "");
+  $("pilltext").textContent = bad ? `${bad} critical` : warn ? `${warn} warning${warn > 1 ? "s" : ""}` : "all systems nominal";
+
+  // ring
+  const req = s.summary.total - s.summary.optional_off, frac = req ? s.summary.up / Math.max(1, s.summary.total) : 0;
+  $("ringval").style.strokeDashoffset = 527.8 * (1 - frac);
+  $("ringval").style.color = s.summary.down ? "var(--red)" : "var(--green)";
+  $("ringnum").textContent = `${s.summary.up}/${s.summary.total}`;
+  $("ringsub").textContent = s.summary.down ? `${s.summary.down} down` : s.summary.optional_off ? `${s.summary.optional_off} optional off` : "everything answering";
+
+  // KPIs
+  const ups = s.power.devices.filter(d => !d.pdu), pdus = s.power.devices.filter(d => d.pdu);
+  const draw = ups.reduce((a, d) => a + (d.load_w || 0), 0);
+  const minRun = ups.length ? Math.min(...ups.map(d => d.runtime_min ?? 1e9)) : null;
+  const disks = s.disks.devices, hot = disks.length ? Math.max(...disks.map(d => d.temp || 0)) : null;
+  const sh = s.exposure.shodan || {}, unexpected = (sh.ports || []).filter(p => !s.exposure.expected_ports.includes(p));
+  const certs = (s.exposure.certs || []).filter(c => c.days_left != null);
+  const minCert = certs.length ? Math.min(...certs.map(c => c.days_left)) : null;
+  const players = s.games.reduce((a, g) => a + (g.online ? g.players || 0 : 0), 0);
+  const kpis = [
+    ["Avg latency", num(s.summary.avg_ms, 1), "ms", "LAN round trip", "var(--cyan)"],
+    ["Power draw", draw ? num(draw) : "–", "W", `${ups.length} UPS · ${pdus.length} PDU`, "var(--amber)"],
+    ["UPS runtime", minRun != null && minRun < 1e9 ? num(minRun) : "–", "min", "shortest on battery", "var(--green)"],
+    ["Drives", `${disks.filter(d => d.ok).length}/${disks.length}`, "", hot ? `hottest ${hot} °C` : "Scrutiny", "var(--violet)"],
+    ["Public ports", (sh.ports || []).length, "", unexpected.length ? `${unexpected.length} unexpected!` : "all expected", unexpected.length ? "var(--amber)" : "var(--blue)"],
+    ["Cert expiry", minCert ?? "–", minCert != null ? "days" : "", "soonest public cert", "var(--cyan)"],
+    ["Players", players, "", s.games.filter(g => g.online).map(g => g.name).join(" · ") || "no game online", "var(--violet)"],
+    ["Incidents", s.incidents.filter(i => i.start > s.now - 86400).length, "", "last 24 h", "var(--red)"],
+  ];
+  $("kpis").innerHTML = kpis.map(([l, n, u, h, c]) => `<div class="kpi" style="--kc:${c}"><div class="lbl">${l}</div><div class="num" style="color:${c}">${esc(n)}<small>${u}</small></div><div class="hint">${esc(h)}</div></div>`).join("");
+  $("updated").textContent = `updated ${new Date().toLocaleTimeString()}`;
+
+  // issues
+  $("issuecount").textContent = s.issues.length ? `${s.issues.length} item${s.issues.length > 1 ? "s" : ""}` : "";
+  $("issues").innerHTML = s.issues.length ? s.issues.map(i => `<div class="issue" style="--c:${LEVEL[i.level]}">${svg(i.level === "info" ? "info" : i.level === "bad" ? "bad" : "warn")}<div><div class="t">${esc(i.title)}</div><div class="d">${esc(i.detail)}</div></div></div>`).join("")
+    : `<div class="allgood">${svg("ok")}<div>All clear. Every service answers, power is on mains, drives pass, nothing unexpected is exposed.</div></div>`;
+
+  // briefing
+  const b = s.briefing;
+  $("brief").textContent = b.text || (b.enabled ? "No briefing yet. Press the button or wait for the morning one." : "Briefings are off (set briefing.url in config.yaml).");
+  $("briefwhen").textContent = b.ts ? `${when(b.ts)}` : (b.time ? `daily ${b.time}` : "");
+  $("briefnote").textContent = b.error || (b.time ? `also every day at ${b.time}` : "");
+  $("briefbtn").style.display = b.enabled ? "" : "none";
+
+  // services
+  $("groups").innerHTML = s.groups.map(g => `<div class="group"><h3>${esc(g.name)}</h3><div class="cards">${g.checks.map(c => card(c, s.uptime[c.id])).join("")}</div></div>`).join("");
+
+  // exposure
+  const ex = s.exposure;
+  $("exwhen").textContent = ex.ts ? ago(ex.ts, s.now) : "";
+  let h = `<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px"><div><div class="small muted">Public IP</div><div class="mono" style="font-size:18px;font-weight:700">${esc(ex.ip || "unknown")}</div></div>
+    <div class="small muted" style="text-align:right">${esc((sh.hostnames || [])[0] || "")}</div></div>`;
+  h += `<div class="small muted" style="margin-top:6px">Open ports seen by Shodan <span class="muted">(updated ~weekly)</span></div><div>${(sh.ports || []).map(p => `<span class="chip ${ex.expected_ports.includes(p) ? "ok" : "warn"}">${p}${portName(p)}</span>`).join("") || '<span class="chip ok">none</span>'}</div>`;
+  if ((sh.vulns || []).length) h += `<div class="small muted" style="margin-top:6px">Known vulnerabilities</div><div>${sh.vulns.map(v => `<span class="chip bad">${esc(v)}</span>`).join("")}</div>`;
+  if ((sh.cpes || []).length) h += `<div class="small muted" style="margin-top:6px">Software fingerprinted</div><div>${sh.cpes.map(v => `<span class="chip info">${esc(v.replace("cpe:/a:", ""))}</span>`).join("")}</div>`;
+  h += `<div class="small muted" style="margin:12px 0 4px">Public sites</div><table>${(ex.certs || []).map(c => `<tr><td><b>${esc(c.name)}</b><div class="small muted mono">${esc(c.url.replace(/^https:\/\//, "").split("/")[0])}</div></td>
+     <td style="text-align:right">${c.planned && !c.reachable ? '<span class="chip off">planned</span>' : c.valid === false ? `<span class="chip bad" title="${esc(c.error)}">cert error</span>` : c.reachable ? '<span class="chip ok">reachable</span>' : '<span class="chip bad">unreachable</span>'}
+     ${c.days_left != null ? `<span class="chip ${c.days_left <= 14 ? "warn" : "info"}">${c.days_left} d</span>` : ""}</td></tr>`).join("") || '<tr><td class="muted">none configured</td></tr>'}</table>`;
+  $("exposure").innerHTML = h;
+
+  // power
+  $("powertotal").textContent = draw ? `${num(draw)} W on UPS` : "";
+  $("power").innerHTML = (ups.map(d => `<div class="ups"><div class="row"><div><b>${esc(d.name)}</b> <span class="small muted">${esc(d.server)}</span></div>
+      <span class="chip ${d.on_battery ? "bad" : "ok"}">${d.on_battery ? "ON BATTERY" : "on mains"}</span></div>
+      <div class="row" style="margin-top:8px"><span class="big">${num(d.charge)}<small class="muted">%</small></span><span class="small muted">battery</span></div>
+      <div class="meter"><i style="width:${d.charge || 0}%;${(d.charge || 0) < 50 ? "background:var(--amber)" : ""}"></i></div>
+      <div class="kv"><div><span class="muted">Load</span><b>${num(d.load_pct)}% ${d.load_w != null ? `· ${d.load_w} W` : ""}</b></div><div><span class="muted">Runtime</span><b>${num(d.runtime_min)} min</b></div><div><span class="muted">Input</span><b>${num(d.input_v)} V</b></div></div>
+      ${d.battery_date ? `<div class="small muted" style="margin-top:6px">Battery from ${esc(d.battery_date)}</div>` : ""}</div>`).join("")
+    + (pdus.length ? `<div class="small muted" style="margin:4px 0 6px">PDUs</div><div class="pdus">${pdus.map(d => `<div class="ups" style="margin:0;padding:10px"><div class="row"><b>${esc(d.name)}</b><span class="mono">${d.load_w ?? 0} W</span></div><div class="meter" style="margin-top:6px"><i style="width:${Math.min(100, d.load_pct || 0) * 4}%"></i></div></div>`).join("")}</div>` : "")
+    + s.power.errors.map(e => `<div class="issue" style="--c:var(--amber)">${svg("warn")}<div class="d">${esc(e)}</div></div>`).join("")) || '<div class="empty">No NUT servers configured.</div>';
+
+  // games
+  $("games").innerHTML = s.games.map(g => `<div class="game"><div class="ic">${svg("game")}</div><div><b>${esc(g.name)}</b> <span class="chip ${g.online ? "ok" : "off"}">${g.online ? "online" : "offline"}</span>
+      <div class="small muted mono">${esc(g.address || "")}${g.online && g.version ? " · " + esc(g.version) : ""}${!g.online && g.detail ? " · " + esc(g.detail) : ""}</div>
+      ${g.online && g.title && g.title !== g.name ? `<div class="small muted">${esc(g.title)}</div>` : ""}</div>
+      <div class="players">${g.online ? `${g.players}<small class="muted" style="font-size:12px">/${g.max_players}</small>` : "–"}<div class="small muted" style="font-weight:400">players</div></div></div>`).join("") || '<div class="empty">No game servers configured.</div>';
+
+  // disks
+  $("diskwhen").textContent = s.disks.ts ? ago(s.disks.ts, s.now) : "";
+  $("disks").innerHTML = disks.length ? `<table><tr><th>Drive</th><th>Temp</th><th>Hours</th><th></th></tr>${disks.map(d => `<tr><td><b class="mono">${esc(d.name)}</b><div class="small muted">${esc(d.model)} · ${d.capacity_tb} TB</div></td>
+      <td class="mono" style="color:${(d.temp || 0) >= 60 ? "var(--red)" : (d.temp || 0) >= 50 ? "var(--amber)" : "inherit"}">${d.temp ?? "–"}°</td><td class="mono small">${d.power_on_hours != null ? Math.round(d.power_on_hours / 24 / 365 * 10) / 10 + " y" : "–"}</td>
+      <td style="text-align:right"><span class="chip ${d.ok ? "ok" : "bad"}">${esc(d.status)}</span></td></tr>`).join("")}</table>` : `<div class="empty">${esc(s.disks.error || "No Scrutiny data yet.")}</div>`;
+
+  // timeline
+  const evs = s.events.map(e => ({ ts: e.ts, level: e.level, title: e.title, body: e.body }));
+  $("events").innerHTML = evs.length ? evs.map(e => `<div class="ev"><div class="when">${when(e.ts)}</div><div><span class="sdot" style="--sc:${LEVEL[e.level] || "var(--blue)"};width:7px;height:7px;margin-right:6px"></span>${esc(e.title)}<div class="b">${esc(e.body)}</div></div></div>`).join("")
+    : '<div class="empty">Quiet so far. Outages, power events, new public ports and new certificates will show up here.</div>';
+  $("ctdomain").textContent = s.exposure.domain ? `*.${s.exposure.domain}` : "";
+  $("ct").innerHTML = (s.exposure.ct || []).map(c => `<div class="ev"><div class="when">${esc((c.not_before || "").slice(0, 10))}</div><div>${c.names.map(n => `<span class="chip info">${esc(n)}</span>`).join("")}<div class="b">${esc((c.issuer.match(/O=([^,]+)/) || [])[1] || c.issuer)} · valid to ${esc((c.not_after || "").slice(0, 10))}</div></div></div>`).join("")
+    || `<div class="empty">${s.exposure.domain ? "Loading from crt.sh (it can take a few minutes)…" : "Set exposure.domain to watch certificate transparency logs."}</div>`;
+
+  $("ver").textContent = `Vigil`;
+  $("uptime").textContent = `watching for ${ago(s.started, s.now).replace(" ago", "")}`;
+  const nt = Object.entries(s.notify).filter(([, v]) => v).map(([k]) => k.replace("_", " "));
+  $("notifyinfo").textContent = nt.length ? `alerts → ${nt.join(", ")}` : "alerts: none set (notify in config.yaml)";
+}
+
+function card(c, up) {
+  const color = c.status === "down" && c.optional ? "var(--grey)" : STATUS[c.status] || "var(--grey)";
+  const bars = (up?.bars || []).map(b => b.up == null ? '<i class="n"></i>' : `<i class="${b.up >= .999 ? "" : b.up > .5 ? "p" : "d"}" style="height:${b.up == null ? 4 : Math.max(25, b.up * 100)}%" title="${Math.round(b.up * 100)}% up${b.ms != null ? `, ${b.ms} ms` : ""}"></i>`).join("");
+  const tag = c.status === "down" ? (c.optional ? "off" : c.detail) : c.status === "pending" ? "checking…" : c.detail;
+  const href = c.link ? `href="${esc(c.link)}" target="_blank" rel="noopener"` : "";
+  return `<a class="card" ${href} style="--sc:${color}" title="${esc(c.target)}">
+    <div class="top"><div class="ic">${svg(c.icon)}</div><div style="min-width:0"><div class="nm">${esc(c.name)}</div><div class="tg">${esc(tag)}</div></div>
+    <div class="st"><span class="sdot"></span><div class="ms">${c.ms != null ? c.ms + " ms" : "–"}</div></div></div>
+    <div class="bars">${bars}</div>
+    <div class="ft"><span>24h ${up?.h24 != null ? up.h24 + "%" : "–"}</span><span>7d ${up?.d7 != null ? up.d7 + "%" : "–"}</span><span>${c.status === "up" ? "up" : c.status} ${ago(c.since).replace(" ago", "")}</span></div></a>`;
+}
+function portName(p) { return { 80: " http", 443: " https", 22: " ssh", 32400: " plex", 25565: " minecraft", 2456: " valheim", 2457: " valheim", 8080: " http-alt", 3389: " rdp" }[p] || ""; }
+
+async function load() {
+  try {
+    const r = await fetch("/api/state", { cache: "no-store" });
+    render(await r.json());
+  } catch (e) {
+    $("pill").className = "pill bad"; $("pilltext").textContent = "Vigil unreachable";
+  }
+}
+function toast(t) { const el = $("toast"); el.textContent = t; el.classList.add("show"); setTimeout(() => el.classList.remove("show"), 3000); }
+$("briefbtn").onclick = async e => {
+  e.target.disabled = true; $("briefnote").textContent = "The LLM is writing…";
+  try { await fetch("/api/briefing", { method: "POST" }); } finally { e.target.disabled = false; load(); }
+};
+document.querySelectorAll("[data-refresh]").forEach(b => b.onclick = async () => {
+  b.disabled = true; toast("Working…");
+  try { await fetch(`/api/refresh/${b.dataset.refresh}`, { method: "POST" }); toast("Done"); } catch { toast("Failed"); } finally { b.disabled = false; load(); }
+});
+$("testalert").onclick = async () => {
+  const r = await (await fetch("/api/test-alert", { method: "POST" })).json();
+  toast(r.targets.length ? `Sent to ${r.targets.join(", ")}` : "No alert targets set in config.yaml");
+};
+function setTheme(t) { document.documentElement.dataset.theme = t; try { localStorage.setItem("vigil.theme", t); } catch {} }
+try { const t = localStorage.getItem("vigil.theme"); if (t) document.documentElement.dataset.theme = t; else if (matchMedia("(prefers-color-scheme: light)").matches) document.documentElement.dataset.theme = "light"; } catch {}
+$("themebtn").onclick = () => setTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light");
+setInterval(() => { $("clock").textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }, 1000);
+load(); setInterval(load, 15000);
+</script>
+</body>
+</html>
