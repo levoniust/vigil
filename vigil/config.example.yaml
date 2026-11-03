@@ -20,13 +20,27 @@ nut: []
 
 scrutiny_url: ""          # e.g. http://192.168.1.10:31054  (drive health)
 
+# Game servers from CubeCoders AMP: Vigil asks AMP which servers exist (running or stopped, and their ports) and checks
+# each running one: Steam query (Valheim, Palworld, most Steam games), Minecraft ping, or a TCP port check.
+# AMP lists only instances the user's role has a permission on (e.g. Instances.*); Vigil only reads. Their player ports count as expected public ports.
+amp:
+  url: ""                 # e.g. http://192.168.1.20:8080 (the AMP panel, ADS)
+  username: ""
+  password: ""
+  host: ""                # where to reach the games; default = the instance's IP, else the AMP host
+  addresses: {}           # optional display names: {"<AMP instance name>": play.example.com}
+  daily_time: ""          # when AMP is asked for its server list; default 10 min before briefing.time (also asked when a game fails)
+
+games_interval_seconds: 900   # running game servers are checked every 15 minutes
+
+# Game servers that are not in AMP (type valheim|a2s|minecraft). Leave empty when AMP hosts them all.
 games: []
 #  - {name: Valheim, type: valheim, host: 192.168.1.20, port: 2456, address: valheim.example.com}
 #  - {name: Minecraft, type: minecraft, host: 192.168.1.20, port: 25565, address: mc.example.com}
 
 exposure:
   enabled: true
-  expected_ports: [443]   # public ports you opened on purpose; anything else Shodan sees is flagged
+  expected_ports: [443]   # public ports you opened on purpose (AMP game ports are added automatically); anything else Shodan sees is flagged
   domain: ""              # watch certificate transparency for *.domain (new certificates alert)
   public_hosts: []        # HTTPS sites to watch from the internet side; planned: true = not live yet
   #  - {name: Photos, url: "https://photos.example.com/"}

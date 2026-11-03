@@ -1,4 +1,4 @@
-"""Network probes: HTTP/TCP checks, NUT (UPS/PDU), Scrutiny, game servers, TLS certificates, internet exposure."""
+"""Network probes: HTTP/TCP checks, NUT (UPS/PDU), Scrutiny, game servers (AMP discovery, A2S, Minecraft), TLS certificates, internet exposure."""
 import asyncio
 import json
 import socket
@@ -128,8 +128,8 @@ async def scrutiny_summary(session, base, timeout):
 
 # ---------- game servers ----------
 
-async def valheim_info(host, port, timeout=3):
-    """Steam A2S_INFO on the query port (game port + 1). Returns {name, map, players, max_players}."""
+async def a2s_info(host, port, timeout=3):
+    """Steam A2S_INFO on the query port (Valheim: game port + 1). Returns {name, map, players, max_players}."""
     loop = asyncio.get_running_loop()
     req = b"\xFF\xFF\xFF\xFFTSource Engine Query\x00"
 
@@ -155,6 +155,10 @@ async def valheim_info(host, port, timeout=3):
     pos += 2  # app id
     players, max_players = data[pos], data[pos + 1]
     return {"name": fields[0], "map": fields[1], "players": players, "max_players": max_players}
+
+
+async def valheim_info(host, port, timeout=3):  # name used before 1.1
+    return await a2s_info(host, port, timeout)
 
 
 def _varint(n):
@@ -195,6 +199,115 @@ async def minecraft_info(host, port=25565, timeout=4):
                 "players": data.get("players", {}).get("online", 0), "max_players": data.get("players", {}).get("max", 0)}
     finally:
         writer.close()
+
+
+# ---------- AMP (CubeCoders) game server discovery ----------
+
+# AMP's AppState numbers (ApplicationState enum) -> what Vigil shows.
+AMP_STATES = {0: "stopped", 5: "starting", 7: "starting", 10: "starting", 20: "running", 30: "restarting", 40: "stopping",
+              45: "stopping", 50: "sleeping", 60: "waiting", 70: "installing", 75: "updating", 80: "waiting", 100: "failed",
+              200: "suspended", 250: "maintenance"}
+# Ports players need (and that may be open to the internet). Not RCON, REST, web or SFTP ports.
+_PLAYER_PORT = ("game", "query", "application", "server", "client", "voice", "steam", "beacon")
+_ADMIN_PORT = ("rcon", "rest", "api", "web", "sftp", "http", "telnet", "console", "rpc", "metrics")
+
+
+async def amp_call(session, base, method, sid="", timeout=15, **params):
+    """One AMP API call (POST /API/<Module>/<Method>, JSON). Returns the decoded answer."""
+    body = {"SESSIONID": sid, **params} if sid else params
+    async with session.post(f"{base.rstrip('/')}/API/{method}", json=body, headers={"Accept": "application/json", **UA},
+                            timeout=aiohttp.ClientTimeout(total=timeout)) as r:
+        if r.status >= 400:
+            raise RuntimeError(f"AMP answered HTTP {r.status}")
+        data = await r.json(content_type=None)
+    if isinstance(data, dict) and data.get("Title") == "Unauthorized Access":
+        raise PermissionError("AMP refused: this user lacks the permission for that call")
+    return data
+
+
+def amp_ports(raw):
+    """AMP port rows (GetInstanceNetworkInfo, or App.Ports with ChildPorts) -> [{name, port, protocol, player}]."""
+    out = []
+
+    def add(p, base_port=None):
+        port = p.get("PortNumber") or p.get("Port") or (base_port + int(p.get("Offset") or 0) if base_port else None)
+        if not port:
+            return
+        proto = {0: "tcp", 1: "udp", 2: "both"}.get(p.get("Protocol"), str(p.get("Protocol", "")).lower() or "tcp")
+        name = str(p.get("Name") or p.get("Description") or p.get("Ref") or "")
+        low = name.lower() + " " + str(p.get("Ref") or p.get("ProvisionNodeName") or "").lower()
+        player = any(k in low for k in _PLAYER_PORT) and not any(k in low for k in _ADMIN_PORT)
+        out.append({"name": name, "port": int(port), "protocol": proto, "player": player})
+        for child in p.get("ChildPorts") or []:
+            add(child, int(port))
+    for p in raw or []:
+        add(p)
+    return out
+
+
+def amp_instance(inst, ports):
+    """One AMP instance -> {id, name, game, state, running, ports, ip}."""
+    running = bool(inst.get("Running"))
+    state = AMP_STATES.get(inst.get("AppState"), "unknown") if running else "stopped"
+    return {"id": inst.get("InstanceID") or inst.get("InstanceName"), "instance": inst.get("InstanceName", ""),
+            "name": inst.get("FriendlyName") or inst.get("InstanceName", ""),
+            "game": inst.get("ModuleDisplayName") or inst.get("Module", ""),
+            "state": state, "running": state == "running", "suspended": bool(inst.get("Suspended")),
+            "ip": inst.get("IP") or "", "ports": ports}
+
+
+async def amp_instances(session, base, username, password, timeout=15):
+    """Every game instance AMP manages: log in, list instances, read each one's ports, log out.
+
+    The ADS controller itself (module ADS) is skipped. Needs a user whose role may view instances."""
+    login = await amp_call(session, base, "Core/Login", timeout=timeout, username=username, password=password, token="", rememberMe=False)
+    if not login.get("success") or not login.get("sessionID"):
+        raise PermissionError(f"AMP login failed: {login.get('resultReason') or 'wrong user or password'}")
+    sid = login["sessionID"]
+    try:
+        targets = await amp_call(session, base, "ADSModule/GetInstances", sid, timeout, ForceIncludeSelf=False)
+        if isinstance(targets, dict):
+            targets = targets.get("result", targets.get("Result", []))
+        out = []
+        for target in targets or []:
+            for inst in target.get("AvailableInstances") or []:
+                if inst.get("Module") == "ADS":
+                    continue
+                try:
+                    net = await amp_call(session, base, "ADSModule/GetInstanceNetworkInfo", sid, timeout, InstanceName=inst.get("InstanceName"))
+                    if isinstance(net, dict):
+                        net = net.get("result", net.get("Result", []))
+                except Exception:  # not allowed for this user, or an older AMP: use the endpoints from GetInstances
+                    net = []
+                ports = amp_ports(net) or amp_ports([{"Name": e.get("DisplayName"), "Port": int(e["Endpoint"].rsplit(":", 1)[1])}
+                                                     for e in inst.get("ApplicationEndpoints") or []
+                                                     if str(e.get("Endpoint", "")).rsplit(":", 1)[-1].isdigit()])
+                out.append(amp_instance(inst, ports))
+        return out
+    finally:
+        try:
+            await amp_call(session, base, "Core/Logout", sid, timeout)
+        except Exception:
+            pass
+
+
+def game_probe(game, ports):
+    """How to check a game: ("minecraft", port) | ("a2s", port) | ("tcp", port) | (None, None) = AMP's word only."""
+    g = game.lower()
+    player = [p for p in ports if p["player"]] or ports
+    if "minecraft" in g and "bedrock" not in g:
+        tcp = [p for p in player if p["protocol"] in ("tcp", "both")]
+        return ("minecraft", tcp[0]["port"]) if tcp else (None, None)
+    query = [p for p in player if "query" in p["name"].lower() and p["protocol"] in ("udp", "both")]
+    if query:
+        return "a2s", query[0]["port"]
+    tcp = [p for p in player if p["protocol"] in ("tcp", "both")]
+    if tcp:
+        return "tcp", tcp[0]["port"]
+    udp = [p for p in player if p["protocol"] == "udp"]
+    if udp:  # Steam games without a separate query port usually answer A2S on the game port
+        return "a2s", udp[0]["port"]
+    return None, None
 
 
 # ---------- TLS certificates and internet exposure ----------

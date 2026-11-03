@@ -33,9 +33,11 @@ checks:
 nut:
   - {name: NAS, host: 192.0.2.10, port: 3493, watts: {ups-rack: 900}}
 scrutiny_url: "http://192.0.2.10:8090"
-games:
-  - {name: Minecraft, type: minecraft, host: 192.0.2.60, port: 25565, address: mc.example.com}
-  - {name: Valheim, type: valheim, host: 192.0.2.60, port: 2456, address: valheim.example.com}
+amp:
+  url: "http://192.0.2.60:8080"
+  username: vigil
+  password: demo
+  addresses: {Viking world: valheim.example.com, Survival: mc.example.com}
 exposure:
   enabled: true
   expected_ports: [443]
@@ -57,7 +59,8 @@ BRIEFING = """Needs attention: an unexpected public port and a flaky Raspberry P
 - Shodan sees port 8443 open on your public IP; close it on the router or add it to expected_ports if you meant to open it.
 - The rack UPS is on mains at 96%, about 41 min runtime at 212 W.
 - Drives are healthy; the warmest is sdc at 44 °C.
-- Minecraft has 3 players online; the Photos certificate renews in 9 days."""
+- Survival (Minecraft) has 3 players and Viking world (Valheim) 2; Pals (Palworld) is stopped in AMP.
+- The Photos certificate renews in 9 days."""
 
 
 def _flaky_down(now):
@@ -93,8 +96,21 @@ async def scrutiny_summary(session, base, timeout):
              "ok": True, "status": "passed"} for i, (n, m, tb, t) in enumerate(disks)]
 
 
-async def valheim_info(host, port, timeout=3):
-    return {"name": "Demo Valheim", "map": "Demo", "players": 0, "max_players": 10}
+async def a2s_info(host, port, timeout=3):
+    return {"name": "Demo Valheim", "map": "Demo", "players": 2, "max_players": 10}
+
+
+valheim_info = a2s_info
+
+
+async def amp_instances(session, base, username, password, timeout=15):
+    def ports(*rows):
+        return probes.amp_ports([{"Name": n, "Port": p, "Protocol": pr} for n, p, pr in rows])
+    raw = [("Viking world", "Valheim", 20, ports(("Game Port", 2456, 1), ("Steam Query Port", 2457, 1))),
+           ("Survival", "Minecraft", 20, ports(("Minecraft Server Port", 25565, 0), ("RCON Port", 25575, 0))),
+           ("Pals", "Palworld", 0, ports(("Game Port", 8211, 1), ("Query Port", 27015, 1), ("RCON Port", 25575, 0)))]
+    return [{"id": f"demo-{i}", "instance": f"{name.replace(' ', '')}01", "name": name, "game": game, "state": probes.AMP_STATES[st],
+             "running": st == 20, "suspended": False, "ip": "", "ports": p} for i, (name, game, st, p) in enumerate(raw)]
 
 
 async def minecraft_info(host, port=25565, timeout=4):
@@ -125,7 +141,7 @@ async def crtsh(session, domain):
 
 def install(engine, data_dir):
     """Swap the probes for the simulated ones, give the engine a canned briefing and seed a week of history."""
-    for name in ("http_check", "tcp_check", "nut_query", "scrutiny_summary", "valheim_info", "minecraft_info", "cert_info",
+    for name in ("http_check", "tcp_check", "nut_query", "scrutiny_summary", "a2s_info", "valheim_info", "minecraft_info", "amp_instances", "cert_info",
                  "public_ip", "shodan_internetdb", "crtsh"):
         setattr(probes, name, globals()[name])
 

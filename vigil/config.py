@@ -1,6 +1,7 @@
 """Settings: /data/config.yaml (created from the example on first start), reloaded when the file changes."""
 import logging
 import os
+import re
 import shutil
 from pathlib import Path
 
@@ -20,7 +21,16 @@ DEFAULTS = {
     "groups": [],
     "nut": [],  # [{name, host, port}] NUT servers; every UPS/PDU on them is shown
     "scrutiny_url": "",
-    "games": [],  # [{name, type: valheim|minecraft, host, port}]
+    "amp": {  # CubeCoders AMP: its game servers are found and checked automatically
+        "url": "",  # e.g. http://192.168.1.20:8080 (the ADS panel)
+        "username": "",
+        "password": "",
+        "host": "",  # where to reach the games; default = the instance's IP or the AMP host
+        "daily_time": "",  # when AMP is asked for its server list each day; default 10 min before briefing.time
+        "addresses": {},  # optional labels: {"<AMP instance name>": "play.example.com"}
+    },
+    "games_interval_seconds": 900,  # how often running game servers are checked (a failed check asks AMP right away)
+    "games": [],  # manual entries for servers not in AMP: [{name, type: valheim|a2s|minecraft, host, port}]
     "exposure": {
         "enabled": True,
         "expected_ports": [443],  # public ports you meant to open; anything else Shodan sees is flagged
@@ -67,8 +77,16 @@ def validate(c):
         if chk["type"] == "tcp" and not (chk.get("host") and chk.get("port")):
             raise ValueError(f"tcp check {chk['id']} needs host and port")
     for g in c["games"]:
-        if g.get("type") not in ("valheim", "minecraft"):
-            raise ValueError(f"game type must be valheim or minecraft: {g}")
+        if g.get("type") not in ("valheim", "a2s", "steam", "minecraft"):
+            raise ValueError(f"game type must be valheim, a2s or minecraft: {g}")
+        if not g.get("host"):
+            raise ValueError(f"game needs a host: {g}")
+    if int(c["games_interval_seconds"]) < 60:
+        raise ValueError("games_interval_seconds must be 60 or more")
+    if c["amp"].get("daily_time") and not re.fullmatch(r"\d{1,2}:\d{2}", str(c["amp"]["daily_time"])):
+        raise ValueError("amp.daily_time must look like 06:50")
+    if c["amp"].get("url") and not c["amp"].get("username"):
+        raise ValueError("amp.url is set but amp.username is empty")
 
 
 class Config:

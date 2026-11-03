@@ -69,7 +69,9 @@ Only these keys exist:
 | `checks` | List of check objects |
 | `nut` | List of NUT/UPS objects |
 | `scrutiny_url` | Scrutiny base URL |
-| `games` | List of game server objects |
+| `amp` | CubeCoders AMP block: game servers are found automatically |
+| `games` | Game servers not in AMP (manual list) |
+| `games_interval_seconds` | How often running game servers are checked (default 900 = 15 min, minimum 60) |
 | `exposure` | Internet exposure block |
 | `briefing` | AI daily briefing block |
 | `notify` | Alert destinations |
@@ -86,11 +88,13 @@ Only these keys exist:
 
 **NUT object fields:** `name`, `host`, `port` (3493), `watts` (map of UPS name to wattage).
 
-**Game object fields:** `name`, `type` (`valheim` or `minecraft`), `host`, `port`, `query_port` (Valheim only; default is game port + 1), `address` (the name players connect to, display only).
+**AMP block fields:** `url` (the AMP panel, e.g. `http://10.0.0.9:8080`), `username`, `password`, `host` (optional: where to reach the games; default is the instance IP, else the AMP host), `daily_time` (when AMP is asked for its server list each day; default 10 minutes before `briefing.time`), `addresses` (optional map of instance name to the address players use, display only). If the user runs AMP, use this block instead of `games`. Ask the user for an AMP login whose role has a permission on every game instance (AMP lists only those; there is no view-only permission), ideally a dedicated user rather than their own admin login. The password is a secret.
 
-Use the `games` list for game servers, not a `tcp` check: Valheim uses UDP, so a TCP check on it always fails.
+**Game object fields:** `name`, `type` (`valheim`, `a2s` for other Steam games, or `minecraft`), `host`, `port`, `query_port` (Valheim only; default is game port + 1), `address` (the name players connect to, display only).
 
-**Exposure block fields:** `enabled`, `expected_ports`, `domain`, `public_hosts` (list of `{name, url, planned}`), `cert_warn_days`.
+Use `amp` or the `games` list for game servers, not a `tcp` check: Valheim uses UDP, so a TCP check on it always fails.
+
+**Exposure block fields:** `enabled`, `expected_ports` (the player ports of AMP game servers are added automatically), `domain`, `public_hosts` (list of `{name, url, planned}`), `cert_warn_days`.
 
 **Briefing block fields:** `enabled`, `url` (OpenAI-compatible `/v1/chat/completions`), `model`, `api_key`, `headers`, `extra_body`, `time` (e.g. `"07:00"`).
 

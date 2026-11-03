@@ -8,11 +8,11 @@ One page that answers "is everything OK?" for the whole lab, and tells you when 
 - **Internet exposure:** your public IP, what [Shodan InternetDB](https://internetdb.shodan.io/) has seen open on it (it flags ports you did not mean to open and known vulnerabilities), HTTPS reachability and certificate expiry of your public sites, and every certificate issued for your domain in the [crt.sh](https://crt.sh) transparency logs. A certificate you did not request means someone is playing with your domain.
 - **Power:** every UPS and PDU on your [NUT](https://networkupstools.org/) servers: on battery or mains, charge, runtime, watts, battery age.
 - **Drives:** health and temperature from [Scrutiny](https://github.com/AnalogJ/scrutiny).
-- **Game servers:** Valheim (Steam query) and Minecraft (server list ping): online, players.
+- **Game servers:** found automatically in [AMP](https://cubecoders.com/AMP) (CubeCoders), running or stopped, then checked every 15 minutes: Steam query (Valheim, Palworld and most Steam games), Minecraft server list ping, or a port check. Online, players, and an alert when a server AMP says is running stops answering. Their ports count as expected public ports. Servers outside AMP can be listed by hand.
 - **Briefing:** an LLM writes a short morning summary from the facts, or on demand. Any OpenAI-compatible API works, including your own llama.cpp, Ollama or LM Studio.
 - **Alerts** (optional): Discord webhook, [ntfy](https://ntfy.sh) or a Home Assistant webhook. You get alerts for service down/up, UPS on battery, a failing drive, a new public port, a new vulnerability, an expiring certificate, a newly issued certificate, a public IP change, plus the morning briefing.
 
-Vigil needs no passwords or API keys: NUT and Scrutiny are read without logging in, and Shodan InternetDB and crt.sh are free. It's one small Python process with SQLite history, light and dark themes, and a layout that works on a phone.
+Vigil needs no passwords or API keys: NUT and Scrutiny are read without logging in, and Shodan InternetDB and crt.sh are free. The one exception is AMP, which needs a login (Vigil only reads with it). It's one small Python process with SQLite history, light and dark themes, and a layout that works on a phone.
 
 ## Try it in 10 seconds (demo mode)
 
@@ -67,6 +67,7 @@ checks:
 nut:
   - {name: NAS, host: 192.168.1.10, port: 3493, watts: {ups: 900}}
 scrutiny_url: "http://192.168.1.10:8080"
+amp: {url: "http://192.168.1.20:8080", username: vigil, password: "..."}
 exposure:
   expected_ports: [443]
   domain: example.com
@@ -81,6 +82,7 @@ notify:
 - An `http` check is up if the service answers with a status below 500 (or one listed in `expect: [200]`). Self-signed certificates are accepted unless you set `insecure: false`.
 - A `tcp` check is up if the port accepts a connection.
 - `optional: true` shows a device grey instead of red when it's off, and sends no alert. Use it for PCs that aren't always on.
+- `amp`: every AMP instance gets a card. Stopped, sleeping or updating servers are shown grey and never alert. Running servers are checked every 15 minutes (`games_interval_seconds`). AMP is asked for its server list once a day, 10 minutes before the morning briefing (`amp.daily_time`), and whenever a server doesn't answer: if AMP says it was stopped or deleted, the card turns grey or goes away without an alert; if AMP says it's still running, Vigil tries once more and then alerts. A game that has never answered the Steam query (no query support) shows AMP's "running" instead. AMP shows a user only the instances its role has a permission on (AMP has no view-only permission), so give Vigil's user a role with a permission on every instance, e.g. `Instances.*`, and keep its password private. Use `games:` for servers AMP doesn't host.
 
 Privacy: the exposure section sends your public IP to Shodan InternetDB and your domain to crt.sh. Your public IP is looked up with ipify, ifconfig.me or icanhazip. To turn all of that off, set `exposure.enabled: false`.
 
@@ -90,7 +92,7 @@ The page has no login, so keep it on your LAN or behind your VPN or reverse-prox
 
 ## API
 
-`GET /api/state` (everything on the page) · `POST /api/briefing` · `POST /api/refresh/{checks|power|disks|games|exposure|certs|ct}` · `POST /api/test-alert` · `GET /healthz`
+`GET /api/state` (everything on the page) · `POST /api/briefing` · `POST /api/refresh/{checks|power|disks|amp|games|exposure|certs|ct}` · `POST /api/test-alert` · `GET /healthz`
 
 ## Development
 

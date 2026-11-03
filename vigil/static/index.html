@@ -220,7 +220,7 @@ footer { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 10px; align-item
       <div id="power"></div>
     </div>
     <div class="panel">
-      <h2><svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 6H3a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h18a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1zM10 13H8v2H6v-2H4v-2h2V9h2v2h2v2zm4.5 2a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm4-3a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>Game servers</h2>
+      <h2><svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 6H3a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h18a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1zM10 13H8v2H6v-2H4v-2h2V9h2v2h2v2zm4.5 2a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm4-3a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/></svg>Game servers<span class="right small mono" id="gameswhen"></span></h2>
       <div id="games"></div>
       <h2 style="margin-top:16px"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 2h12a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm6 4a6 6 0 1 0 0 12 6 6 0 0 0 0-12zm0 4a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"/></svg>Drives<span class="right small mono" id="diskwhen"></span></h2>
       <div id="disks"></div>
@@ -372,10 +372,15 @@ function render(s) {
     + s.power.errors.map(e => `<div class="issue" style="--c:var(--amber)">${svg("warn")}<div class="d">${esc(e)}</div></div>`).join("")) || '<div class="empty">No NUT servers configured.</div>';
 
   // games
-  $("games").innerHTML = s.games.map(g => `<div class="game"><div class="ic">${svg("game")}</div><div><b>${esc(g.name)}</b> <span class="chip ${g.online ? "ok" : "off"}">${g.online ? "online" : "offline"}</span>
-      <div class="small muted mono">${esc(g.address || "")}${g.online && g.version ? " · " + esc(g.version) : ""}${!g.online && g.detail ? " · " + esc(g.detail) : ""}</div>
-      ${g.online && g.title && g.title !== g.name ? `<div class="small muted">${esc(g.title)}</div>` : ""}</div>
-      <div class="players">${g.online ? `${g.players}<small class="muted" style="font-size:12px">/${g.max_players}</small>` : "–"}<div class="small muted" style="font-weight:400">players</div></div></div>`).join("") || '<div class="empty">No game servers configured.</div>';
+  $("gameswhen").textContent = s.amp && s.amp.configured ? (s.amp.error ? "AMP unreachable" : s.amp.ts ? `AMP list ${ago(s.amp.ts, s.now)} · checks every ${Math.round(s.amp.games_interval / 60)} min` : "asking AMP…") : "";
+  const gameChip = g => g.online ? ["ok", "online"] : g.online === null ? ["warn", "no answer"] : g.expected ? ["bad", "offline"] : ["off", g.state || "offline"];
+  $("games").innerHTML = s.games.map(g => { const [cc, ct] = gameChip(g), up = g.online && g.players != null;
+    return `<div class="game"${g.expected ? "" : ' style="opacity:.6"'}><div class="ic">${svg("game")}</div><div><b>${esc(g.name)}</b> <span class="chip ${cc}">${esc(ct)}</span>
+      <div class="small muted mono">${esc([g.game && g.game.toLowerCase() !== g.name.toLowerCase() ? g.game : "", g.address].filter(Boolean).join(" · "))}${g.online && g.version ? " · " + esc(g.version) : ""}</div>
+      ${g.online && g.title && g.title !== g.name ? `<div class="small muted">${esc(g.title)}</div>` : ""}
+      ${g.detail && (!g.online || !up) ? `<div class="small muted">${esc(g.detail)}</div>` : ""}</div>
+      <div class="players">${up ? `${g.players}<small class="muted" style="font-size:12px">/${g.max_players}</small>` : "–"}<div class="small muted" style="font-weight:400">players</div></div></div>`; }).join("")
+    || `<div class="empty">${s.amp && s.amp.configured ? "AMP has no game servers." : "No game servers. Set amp.url in config.yaml to find them automatically."}</div>`;
 
   // disks
   $("diskwhen").textContent = s.disks.ts ? ago(s.disks.ts, s.now) : "";

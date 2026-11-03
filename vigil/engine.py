@@ -5,6 +5,7 @@ import logging
 import re
 import time
 from datetime import datetime, timedelta
+from urllib.parse import urlparse
 
 import aiohttp
 
@@ -22,11 +23,15 @@ class Engine:
         self.power = {"devices": [], "errors": [], "ts": None}
         self.disks = {"devices": [], "error": "", "ts": None}
         self.games = []
+        self.game_state = {}  # target id -> {fails, status}
+        self.amp = self.store.get("amp", {"instances": [], "error": "", "ts": None, "ok": None})
+        self.a2s_seen = set(self.store.get("a2s_seen", []))  # games that answered the Steam query at least once
         self.exposure = self.store.get("exposure", {"ip": None, "shodan": None, "certs": [], "ct": [], "errors": [], "ts": None})
         self.briefing = self.store.get("briefing", {"ts": None, "text": "", "error": ""})
         self.started = time.time()
         self.session = None
         self._briefing_lock = asyncio.Lock()
+        self._games_lock = asyncio.Lock()
 
     @property
     def c(self):
@@ -37,7 +42,7 @@ class Engine:
     async def run(self):
         self.session = aiohttp.ClientSession()
         loops = [self._every(self.c["interval_seconds"], self.run_checks), self._every(60, self.run_power),
-                 self._every(60, self.run_games), self._every(600, self.run_disks), self._every(3600, self.run_certs),
+                 self._every(lambda: max(60, int(self.c["games_interval_seconds"])), self.run_games), self._amp_clock(), self._every(600, self.run_disks), self._every(3600, self.run_certs),
                  self._every(6 * 3600, self.run_exposure), self._every(24 * 3600, self.run_ct),
                  self._every(3600, lambda: asyncio.to_thread(self.store.prune, self.c["keep_days"])), self._briefing_clock()]
         await asyncio.gather(*loops)
@@ -131,23 +136,171 @@ class Engine:
         except Exception as ex:
             self.disks["error"] = probes.short_error(ex)
 
-    # ---------- games ----------
+    # ---------- games: AMP discovery + manual entries ----------
+
+    async def run_amp(self):
+        """Ask AMP for its server list now, then check the games (the API refresh button and the daily clock)."""
+        async with self._games_lock:
+            await self._discover()
+            await self._run_games()
+
+    async def _amp_clock(self):
+        """Ask AMP for the server list once a day, shortly before the morning briefing (amp.daily_time, default
+        10 minutes before briefing.time). Between those, AMP is only asked when a game check fails."""
+        while True:
+            try:
+                if self.c["amp"].get("url"):
+                    hh, mm = map(int, self.amp_daily_time().split(":"))
+                    now = datetime.now()
+                    due = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+                    if due <= now < due + timedelta(minutes=30) and (self.amp.get("ts") or 0) < due.timestamp():
+                        await self.run_amp()
+            except Exception:
+                log.exception("AMP clock")
+            await asyncio.sleep(60)
+
+    def amp_daily_time(self):
+        t = str(self.c["amp"].get("daily_time") or "")
+        if t:
+            return t
+        hh, mm = map(int, str(self.c["briefing"].get("time", "07:00")).split(":"))
+        before = datetime(2000, 1, 2, hh, mm) - timedelta(minutes=10)
+        return before.strftime("%H:%M")
+
+    async def _discover(self):
+        """Ask AMP which game servers exist (and their ports and state). Keeps the last list when AMP can't be reached."""
+        amp = self.c["amp"]
+        if not amp.get("url"):
+            self.amp = {"instances": [], "error": "", "ts": None, "ok": None}
+            return False
+        try:
+            found = await probes.amp_instances(self.session, amp["url"], amp.get("username", ""), amp.get("password", ""))
+        except Exception as ex:
+            err = probes.short_error(ex)
+            if self.amp.get("ok") is not False:
+                await self.alert("warn", "AMP unreachable", f"{err} - game servers show their last known state")
+            self.amp.update(error=err, ok=False)
+            return False
+        if self.amp.get("ok") is False:
+            await self.alert("ok", "AMP reachable again", f"{len(found)} game server(s)")
+        before = {i["id"]: i for i in self.amp.get("instances", [])}
+        if self.amp.get("ts"):  # not on the very first discovery
+            for inst in found:
+                was = before.get(inst["id"])
+                if not was:
+                    await asyncio.to_thread(self.store.add_event, "info", f"New game server in AMP: {inst['name']}", f"{inst['game']}, {inst['state']}")
+                elif was["state"] != inst["state"]:
+                    if inst["state"] == "failed":
+                        await self.alert("bad", f"{inst['name']} failed in AMP", f"{inst['game']} was {was['state']}")
+                    else:
+                        await asyncio.to_thread(self.store.add_event, "info", f"{inst['name']} is {inst['state']} in AMP", inst["game"])
+            for gone in set(before) - {i["id"] for i in found}:
+                await asyncio.to_thread(self.store.add_event, "info", f"Game server removed from AMP: {before[gone]['name']}", before[gone]["game"])
+        self.amp = {"instances": found, "error": "", "ts": time.time(), "ok": True}
+        self.store.put("amp", self.amp)
+        return True
+
+    def amp_host(self, inst):
+        """Where to reach an AMP game: amp.host, else the instance's own IP, else the AMP server's host."""
+        amp = self.c["amp"]
+        if amp.get("host"):
+            return amp["host"]
+        if inst.get("ip") and inst["ip"] not in ("0.0.0.0", "::", "127.0.0.1", "localhost"):
+            return inst["ip"]
+        return urlparse(amp["url"]).hostname
+
+    def game_targets(self):
+        """Every game server to show: AMP instances first, then manual `games:` entries (for servers not in AMP)."""
+        out = []
+        addresses = self.c["amp"].get("addresses") or {}
+        for inst in self.amp.get("instances", []):
+            kind, port = probes.game_probe(inst["game"], inst["ports"])
+            host = self.amp_host(inst)
+            connect = next((p["port"] for p in inst["ports"] if p["player"] and "query" not in p["name"].lower()), port)
+            out.append({"id": f"amp:{inst['id']}", "name": inst["name"], "game": inst["game"], "source": "amp", "state": inst["state"],
+                        "kind": kind, "host": host, "port": port,
+                        "address": addresses.get(inst["name"]) or addresses.get(inst["instance"]) or (f"{host}:{connect}" if connect else host)})
+        for g in self.c["games"]:
+            kind = {"valheim": "a2s", "steam": "a2s", "a2s": "a2s"}.get(g["type"], g["type"])
+            port = int(g.get("query_port", int(g.get("port", 2456)) + 1)) if g["type"] == "valheim" else int(g.get("port", 25565 if kind == "minecraft" else 27015))
+            out.append({"id": f"cfg:{g.get('name', g['type'])}", "name": g.get("name", g["type"]), "game": g["type"].title(), "source": "config",
+                        "state": "running", "kind": kind, "host": g["host"], "port": port, "address": g.get("address", "")})
+        return out
 
     async def run_games(self):
+        async with self._games_lock:
+            if self.c["amp"].get("url") and not self.amp.get("ts"):  # first start: no saved list yet
+                await self._discover()
+            await self._run_games()
+
+    async def _probe_game(self, t):
+        """(ok, card fields) for one running game server."""
+        try:
+            if t["kind"] == "a2s":
+                info = await probes.a2s_info(t["host"], t["port"])
+                self.a2s_seen.add(t["id"])
+            elif t["kind"] == "minecraft":
+                info = await probes.minecraft_info(t["host"], t["port"])
+            elif t["kind"] == "tcp":
+                ok, ms, detail = await probes.tcp_check({"host": t["host"], "port": t["port"]}, float(self.c["timeout_seconds"]))
+                if not ok:
+                    raise ConnectionError(detail)
+                info = {"detail": f"port {t['port']} open"}
+            else:
+                info = {"detail": "running in AMP (no query for this game)"}
+            return True, {"online": True, "title": info.get("name"), "players": info.get("players"), "max_players": info.get("max_players"),
+                          "map": info.get("map"), "version": info.get("version"), "detail": info.get("detail", "")}
+        except Exception as ex:
+            if t["kind"] == "a2s" and t["source"] == "amp" and t["id"] not in self.a2s_seen:
+                # never answered A2S: probably a game without Steam query; trust AMP's "running"
+                return True, {"online": True, "detail": "running in AMP (no answer to the Steam query)"}
+            return False, {"online": False, "detail": probes.short_error(ex)}
+
+    async def _run_games(self):
+        """Check every running game server (every games_interval_seconds, default 15 min). A server that doesn't answer:
+        ask AMP whether it still exists and still runs, then check it once more before alerting."""
+        targets = self.game_targets()
+        results = {t["id"]: await self._probe_game(t) for t in targets if t["state"] == "running"}
+        failed = [t for t in targets if t["id"] in results and not results[t["id"]][0]]
+        if failed and any(t["source"] == "amp" for t in failed) and self.c["amp"].get("url"):
+            if await self._discover():
+                targets = self.game_targets()
+        for t in targets:
+            if t["id"] in {f["id"] for f in failed} and t["state"] == "running":
+                results[t["id"]] = await self._probe_game(t)  # still there and running: one more try (UDP can drop a packet)
+        for gone in set(self.game_state) - {t["id"] for t in targets}:
+            del self.game_state[gone]
         out = []
-        for g in self.c["games"]:
-            item = {"name": g.get("name", g["type"]), "type": g["type"], "address": g.get("address", "")}
-            try:
-                if g["type"] == "valheim":
-                    item.update(await probes.valheim_info(g["host"], int(g.get("query_port", int(g.get("port", 2456)) + 1))), online=True)
-                else:
-                    item.update(await probes.minecraft_info(g["host"], int(g.get("port", 25565))), online=True)
-                item.setdefault("title", item.get("name"))
-                item["name"] = g.get("name", item["name"])
-            except Exception as ex:
-                item.update(online=False, detail=probes.short_error(ex))
+        for t in targets:
+            st = self.game_state.setdefault(t["id"], {"status": "unknown"})
+            item = {k: t[k] for k in ("name", "game", "source", "state", "address")}
+            item.update(type=t["kind"] or "amp", online=False, players=None, max_players=None, detail="", expected=t["state"] == "running",
+                        checked=time.time())
+            if t["state"] != "running":  # stopped/sleeping/updating in AMP: nothing to check, never an alert
+                st["status"] = "off"
+                item["detail"] = f"{t['state']} in AMP"
+                out.append(item)
+                continue
+            ok, fields = results[t["id"]]
+            item.update(fields)
+            new = "up" if ok else "down"
+            if new != st["status"]:
+                if new == "down":
+                    why = "AMP says it is running, but it" if t["source"] == "amp" and self.amp.get("ok") else "it"
+                    await self.alert("bad", f"{t['name']} is not answering", f"{why} does not answer on {t['host']}:{t['port']}: {item['detail']}")
+                elif st["status"] == "down":
+                    await self.alert("ok", f"{t['name']} is answering again", item.get("title") or t["game"])
+                st["status"] = new
             out.append(item)
         self.games = out
+        self.store.put("a2s_seen", sorted(self.a2s_seen))
+
+    def expected_ports(self):
+        """Public ports that are fine: exposure.expected_ports + the player ports of every AMP game server."""
+        ports = set(self.c["exposure"].get("expected_ports", []))
+        for inst in self.amp.get("instances", []):
+            ports |= {p["port"] for p in inst["ports"] if p["player"]}
+        return sorted(ports)
 
     # ---------- internet exposure ----------
 
@@ -238,6 +391,11 @@ class Engine:
             if age is not None and age >= 3.5:
                 out.append({"level": "warn", "title": f"{d['name']} battery is {age:.1f} years old", "detail": "APC batteries last 3-5 years; plan a replacement"})
         out += [{"level": "warn", "title": "NUT server unreachable", "detail": e} for e in self.power["errors"]]
+        if self.c["amp"].get("url") and self.amp.get("error"):
+            out.append({"level": "warn", "title": "AMP unreachable", "detail": f"{self.amp['error']}; game servers show their last known state"})
+        for g in self.games:
+            if g["online"] is False and g.get("expected"):
+                out.append({"level": "bad", "title": f"{g['name']} is not answering", "detail": g["detail"]})
         for d in self.disks["devices"]:
             if not d["ok"]:
                 out.append({"level": "bad", "title": f"Drive {d['name']}: {d['status']}", "detail": f"{d['model']} {d['serial']}"})
@@ -245,10 +403,10 @@ class Engine:
                 out.append({"level": "warn", "title": f"Drive {d['name']} is hot ({d['temp']} °C)", "detail": d["model"]})
         ex = self.c["exposure"]
         sh = self.exposure.get("shodan") or {}
-        unexpected = sorted(set(sh.get("ports", [])) - set(ex.get("expected_ports", [])))
+        unexpected = sorted(set(sh.get("ports", [])) - set(self.expected_ports()))
         if unexpected:
             out.append({"level": "warn", "title": f"Unexpected public port(s): {', '.join(map(str, unexpected))}",
-                        "detail": "Shodan sees these open on your public IP; add them to exposure.expected_ports if intended"})
+                        "detail": "Shodan sees these open on your public IP; close them, or add them to exposure.expected_ports if intended (AMP game ports count automatically)"})
         if sh.get("vulns"):
             out.append({"level": "bad", "title": f"{len(sh['vulns'])} known vulnerabilities on your public IP", "detail": ", ".join(sh["vulns"][:6])})
         for cert in self.exposure.get("certs", []):
@@ -299,9 +457,9 @@ class Engine:
                       "ups": [{k: d[k] for k in ("name", "status", "charge", "runtime_min", "load_pct", "load_w", "battery_date")} for d in self.power["devices"] if not d["pdu"]],
                       "pdus": [{k: d[k] for k in ("name", "load_w")} for d in self.power["devices"] if d["pdu"]]},
             "disks": [{k: d[k] for k in ("name", "model", "temp", "status")} for d in self.disks["devices"]],
-            "games": [{k: g.get(k) for k in ("name", "online", "players", "max_players")} for g in self.games],
+            "games": [{k: g.get(k) for k in ("name", "game", "state", "online", "players", "max_players")} for g in self.games],
             "internet": {"public_ip": self.exposure.get("ip"), "shodan_ports": (self.exposure.get("shodan") or {}).get("ports"),
-                         "expected_ports": self.c["exposure"].get("expected_ports"),
+                         "expected_ports": self.expected_ports(),
                          "certs": [{k: x.get(k) for k in ("name", "days_left", "reachable", "planned")} for x in self.exposure.get("certs", [])]},
             "issues": self.issues(),
         }
@@ -384,7 +542,10 @@ class Engine:
             "issues": self.issues(),
             "groups": [{"name": g, "checks": sorted(items, key=lambda x: x["name"].lower())} for g, items in group_list],
             "uptime": uptime, "power": self.power, "disks": self.disks, "games": self.games,
-            "exposure": {**self.exposure, "expected_ports": self.c["exposure"].get("expected_ports", []), "domain": self.c["exposure"].get("domain", "")},
+            "amp": {"configured": bool(self.c["amp"].get("url")), "error": self.amp.get("error", ""), "ts": self.amp.get("ts"),
+                    "daily_time": self.amp_daily_time(), "games_interval": int(self.c["games_interval_seconds"]),
+                    "count": len(self.amp.get("instances", []))},
+            "exposure": {**self.exposure, "expected_ports": self.expected_ports(), "domain": self.c["exposure"].get("domain", "")},
             "briefing": {**self.briefing, "enabled": bool(self.c["briefing"].get("url")), "time": self.c["briefing"].get("time")},
             "incidents": self.store.incidents(20), "events": self.store.events(30),
             "notify": {k: bool(v) for k, v in self.c["notify"].items()},

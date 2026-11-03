@@ -126,7 +126,7 @@ def test_demo_mode_fills_every_panel(tmp_path, monkeypatch):
         import aiohttp
         eng.session = aiohttp.ClientSession()
         try:
-            for job in (eng.run_checks, eng.run_checks, eng.run_power, eng.run_disks, eng.run_games, eng.run_exposure, eng.run_certs, eng.run_ct):
+            for job in (eng.run_checks, eng.run_checks, eng.run_power, eng.run_disks, eng.run_amp, eng.run_games, eng.run_exposure, eng.run_certs, eng.run_ct):
                 await job()
             await eng.make_briefing()
             return eng.state()
@@ -134,7 +134,8 @@ def test_demo_mode_fills_every_panel(tmp_path, monkeypatch):
             await eng.session.close()
     s = asyncio.run(run())
     assert s["summary"]["total"] == 15 and s["summary"]["up"] >= 13
-    assert s["power"]["devices"] and len(s["disks"]["devices"]) == 5 and len(s["games"]) == 2
+    assert s["power"]["devices"] and len(s["disks"]["devices"]) == 5 and len(s["games"]) == 3
+    assert [g["online"] for g in s["games"]] == [True, True, False] and s["games"][2]["state"] == "stopped"
     assert s["exposure"]["ip"] == "203.0.113.7" and s["exposure"]["certs"] and s["exposure"]["ct"]
     assert s["briefing"]["text"] and s["incidents"] and s["uptime"]["immich"]["d7"] < 100
     assert any("8443" in i["title"] for i in s["issues"])

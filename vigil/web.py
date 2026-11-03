@@ -21,7 +21,7 @@ def make_app(engine):
 
     async def refresh(request):
         what = request.match_info["what"]
-        jobs = {"checks": engine.run_checks, "power": engine.run_power, "disks": engine.run_disks, "games": engine.run_games,
+        jobs = {"checks": engine.run_checks, "power": engine.run_power, "disks": engine.run_disks, "games": engine.run_games, "amp": engine.run_amp,
                 "exposure": engine.run_exposure, "certs": engine.run_certs, "ct": engine.run_ct}
         if what not in jobs:
             raise web.HTTPNotFound()
